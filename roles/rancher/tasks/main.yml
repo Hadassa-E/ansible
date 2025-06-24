@@ -1,0 +1,25 @@
+- name: Add Rancher Helm repo
+  community.kubernetes.helm_repository:
+    name: rancher
+    repo_url: https://the_carter/rancher:0.1.0
+  register: add_helm_repo_result
+
+- name: Create cattle-system namespace if not exists
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: cattle-system
+    state: present
+
+- name: Install Rancher helm chart
+  community.kubernetes.helm:
+    name: rancher
+    chart_ref: rancher/rancher
+    namespace: cattle-system
+    create_namespace: false
+    chart_version: "2.11.2"
+    values:
+      hostname: "{{ rancher_hostname }}"
+      bootstrapPassword: "{{ rancher_bootstrap_password }}"
+    wait: yes
+    wait_timeout: 600
