@@ -1,0 +1,4 @@
+- hosts: cluster_ktest
+  become: true
+  roles:
+    - cluster_rke2

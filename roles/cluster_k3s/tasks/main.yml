@@ -1,0 +1,110 @@
+- name: Install K3s cluster in airgap mode
+  hosts: k3s_servers
+  become: true
+  tasks:
+
+    # Copy K3s binary
+    - name: Copy K3s binary to /usr/local/bin/k3s
+      copy:
+        src: files/k3s
+        dest: /usr/local/bin/k3s
+        mode: '0755'
+
+    # Ensure airgap images directory exists
+    - name: Ensure airgap images directory exists
+      file:
+        path: /var/lib/rancher/k3s/agent/images
+        state: directory
+        mode: '0755'
+
+    # Copy airgap images
+    - name: Copy airgap images to server
+      copy:
+        src: files/k3s-airgap-images-amd64.tar.gz
+        dest: /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar.gz
+        mode: '0644'
+
+    # Create systemd service file for first server
+    - name: Create systemd service file (first server only)
+      copy:
+        dest: /etc/systemd/system/k3s.service
+        content: |
+          [Unit]
+          Description=Lightweight Kubernetes (K3s)
+          Documentation=https://k3s.io
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=exec
+          ExecStart=/usr/local/bin/k3s server --cluster-init
+          Restart=always
+          RestartSec=5s
+          LimitNOFILE=1048576
+          LimitNPROC=infinity
+          LimitCORE=infinity
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname == ansible_play_hosts[0]
+
+    - name: Reload systemd and enable+start k3s on first server
+      shell: |
+        systemctl daemon-reexec
+        systemctl daemon-reload
+        systemctl enable k3s
+        systemctl start k3s
+      when: inventory_hostname == ansible_play_hosts[0]
+
+    - name: Wait for K3s token file on first server
+      wait_for:
+        path: /var/lib/rancher/k3s/server/token
+        timeout: 120
+      when: inventory_hostname == ansible_play_hosts[0]
+
+    - name: Fetch K3s token from first server
+      slurp:
+        src: /var/lib/rancher/k3s/server/token
+      register: token_result
+      delegate_to: "{{ ansible_play_hosts[0] }}"
+      run_once: true
+
+    - name: Decode token
+      set_fact:
+        k3s_token: "{{ token_result.content | b64decode | trim }}"
+      run_once: true
+
+    # Create systemd service file for the other servers
+    - name: Create systemd service file (joining servers)
+      copy:
+        dest: /etc/systemd/system/k3s.service
+        content: |
+          [Unit]
+          Description=Lightweight Kubernetes (K3s)
+          Documentation=https://k3s.io
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=exec
+          ExecStart=/usr/local/bin/k3s server \
+            --server https://{{ hostvars[ansible_play_hosts[0]]['ansible_host'] }}:6443 \
+            --token {{ k3s_token }}
+          Restart=always
+          RestartSec=5s
+          LimitNOFILE=1048576
+          LimitNPROC=infinity
+          LimitCORE=infinity
+
+          [Install]
+          WantedBy=multi-user.target
+      when: inventory_hostname != ansible_play_hosts[0]
+
+    - name: Reload systemd and enable+start k3s on joining servers
+      shell: |
+        systemctl daemon-reexec
+        systemctl daemon-reload
+        systemctl enable k3s
+        systemctl start k3s
+      when: inventory_hostname != ansible_play_hosts[0]
+

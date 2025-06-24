@@ -1,0 +1,2 @@
+roles/cluster_k3s/files/k3s
+roles/cluster_k3s/files/k3s-airgap-images-amd64.tar.gz

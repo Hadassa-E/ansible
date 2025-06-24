@@ -1,0 +1,13 @@
+[cluster_local]
+rancher-test-01
+rancher-test-02
+rancher-test-03
+
+[cluster_ktest]
+ktest-server-01
+ktest-server-02
+ktest-server-03
+
+[all:vars]
+ansible_user=oc_user
+ansible_ssh_pass=O3ean3assword1!
